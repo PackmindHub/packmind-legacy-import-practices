@@ -10,7 +10,6 @@ import type {
   ValidatedRule,
   ValidatedStandard,
   ValidationOutput,
-  DetectionProgram,
 } from './types.js';
 import { ProgrammingLanguage, ProgrammingLanguageDetails } from './ProgrammingLanguage.js';
 
@@ -277,9 +276,9 @@ export function convertProgrammingLanguage(extension: string): string {
 
 export class PracticeToStandardConvertor {
   private config: PracticeToStandardConvertorConfig;
-  private spacesMap: Map<string, string> = new Map(); // ObjectId -> name
+  private spacesMap = new Map<string, string>(); // ObjectId -> name
   private standardsMapping: StandardMapping[] = [];
-  private practiceToStandard: Map<string, string> = new Map(); // practice name -> standard name
+  private practiceToStandard = new Map<string, string>(); // practice name -> standard name
 
   constructor(config: PracticeToStandardConvertorConfig) {
     this.config = config;

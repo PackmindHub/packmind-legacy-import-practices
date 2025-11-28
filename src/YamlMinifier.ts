@@ -31,7 +31,7 @@ export class YamlMinifier {
     const fileContent = readFileSync(inputPath, 'utf-8');
     const parsed = yaml.load(fileContent) as YamlOutput;
     
-    if (!parsed || !parsed.practices) {
+    if (!parsed?.practices) {
       throw new Error('Invalid YAML structure: missing practices array');
     }
     

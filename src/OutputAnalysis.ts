@@ -10,7 +10,7 @@ function extractFileExtensions(practice: ParsedPractice): string[] {
   return practice.examples
     .map(ex => ex.fileWorkshop?.path)
     .filter((path): path is string => Boolean(path))
-    .map(path => '.' + path.split('.').pop())
+    .map(path => '.' + (path.split('.').pop() ?? ''))
     .filter((ext, i, arr) => arr.indexOf(ext) === i)
     .sort();
 }

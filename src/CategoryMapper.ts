@@ -137,8 +137,8 @@ ${yamlContent}`;
  */
 export function parseLLMResponse(response: string): string {
   // Try to extract YAML from code blocks
-  const yamlBlockMatch = response.match(/```ya?ml\n([\s\S]*?)```/);
-  if (yamlBlockMatch && yamlBlockMatch[1]) {
+  const yamlBlockMatch = /```ya?ml\n([\s\S]*?)```/.exec(response);
+  if (yamlBlockMatch?.[1]) {
     return yamlBlockMatch[1].trim();
   }
   
@@ -262,11 +262,11 @@ export function findMissingPractices(
  */
 export function removeDuplicatesRandomly(data: StandardsMapping): { data: StandardsMapping; duplicatesRemoved: number } {
   // First, build a map of practice -> all categories it appears in
-  const practiceLocations = new Map<string, { categoryIndex: number; practiceIndex: number; practiceName: string }[]>();
+  const practiceLocations = new Map<string, Array<{ categoryIndex: number; practiceIndex: number; practiceName: string }>>();
   
   for (let catIdx = 0; catIdx < data.standards.length; catIdx++) {
     const category = data.standards[catIdx];
-    if (category && category.practices && Array.isArray(category.practices)) {
+    if (category?.practices && Array.isArray(category.practices)) {
       for (let practiceIdx = 0; practiceIdx < category.practices.length; practiceIdx++) {
         const practice = category.practices[practiceIdx];
         if (practice) {
@@ -287,7 +287,7 @@ export function removeDuplicatesRandomly(data: StandardsMapping): { data: Standa
   
   // Find duplicates and randomly pick one to keep
   let duplicatesRemoved = 0;
-  const indicesToRemove: { categoryIndex: number; practiceIndex: number }[] = [];
+  const indicesToRemove: Array<{ categoryIndex: number; practiceIndex: number }> = [];
   
   for (const [, locations] of practiceLocations) {
     if (locations.length > 1) {
@@ -324,7 +324,7 @@ export function removeDuplicatesRandomly(data: StandardsMapping): { data: Standa
   // Remove the practices
   for (const { categoryIndex, practiceIndex } of indicesToRemove) {
     const category = data.standards[categoryIndex];
-    if (category && category.practices) {
+    if (category?.practices) {
       category.practices.splice(practiceIndex, 1);
     }
   }
@@ -406,12 +406,12 @@ export function mergeRetryResults(existing: StandardsMapping, retryResponse: str
   let retryData: StandardsMapping;
   try {
     retryData = yaml.load(yamlContent) as StandardsMapping;
-  } catch (error) {
+  } catch {
     console.log('  ⚠️  Failed to parse retry response, skipping merge');
     return existing;
   }
   
-  if (!retryData || !retryData.standards) {
+  if (!retryData?.standards) {
     console.log('  ⚠️  Invalid retry response structure, skipping merge');
     return existing;
   }
@@ -456,7 +456,7 @@ export function mergeRetryResults(existing: StandardsMapping, retryResponse: str
 export function sortPracticesAlphabetically(yamlContent: string): string {
   const data = yaml.load(yamlContent) as StandardsMapping;
   
-  if (!data || !data.standards) {
+  if (!data?.standards) {
     return yamlContent;
   }
   
@@ -583,7 +583,7 @@ export class CategoryMapper {
     const yamlContent = parseLLMResponse(response);
     const data = yaml.load(yamlContent) as StandardsMapping;
     
-    if (!data || !data.standards) {
+    if (!data?.standards) {
       throw new Error('Invalid LLM response: missing categories');
     }
     

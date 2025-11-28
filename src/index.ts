@@ -105,7 +105,7 @@ function discoverStandardsMappingFiles(directory: string): string[] {
  * e.g., "bforbank-android.standards-mapping.yaml" -> "bforbank-android"
  */
 function extractSlugFromStandardsMappingFilename(filename: string): string | null {
-  const match = filename.match(/^(.+)\.standards-mapping\.yaml$/);
+  const match = /^(.+)\.standards-mapping\.yaml$/.exec(filename);
   return match ? match[1] ?? null : null;
 }
 
@@ -495,7 +495,7 @@ function runStatsCommand(): void {
  * e.g., "bforbank-backend.minified.yaml" -> "bforbank-backend"
  */
 function extractSlugFromMinifiedFilename(filename: string): string | null {
-  const match = filename.match(/^(.+)\.minified\.yaml$/);
+  const match = /^(.+)\.minified\.yaml$/.exec(filename);
   return match ? match[1] ?? null : null;
 }
 

@@ -18,7 +18,7 @@ import type {
 export class YamlExporter {
   private readonly contextLines: number;
 
-  constructor(contextLines: number = 2) {
+  constructor(contextLines = 2) {
     this.contextLines = contextLines;
   }
 
@@ -104,7 +104,7 @@ export class YamlExporter {
    * Removes the isPositive field from a CodeExample for output
    */
   private toOutputFormat(example: CodeExample): CodeExampleOutput {
-    const { isPositive, ...output } = example;
+    const { isPositive: _isPositive, ...output } = example;
     return output;
   }
 
