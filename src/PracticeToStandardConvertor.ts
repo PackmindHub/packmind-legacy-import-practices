@@ -11,7 +11,7 @@ import type {
   ValidatedStandard,
   ValidationOutput,
 } from './types.js';
-import { ProgrammingLanguage, ProgrammingLanguageDetails } from './ProgrammingLanguage.js';
+import { ProgrammingLanguage, ProgrammingLanguageDetails, stringToProgrammingLanguage } from './ProgrammingLanguage.js';
 
 // ============================================================================
 // Types for Standards Mapping YAML
@@ -247,27 +247,21 @@ export function addDescriptionAsCommentForLanguage(
 }
 
 /**
- * Converts a file extension to a ProgrammingLanguage string value.
- * @param extension - The file extension (e.g., "kt", "java", "py")
+ * Converts a language input (name, enum value, or file extension) to a ProgrammingLanguage string value.
+ * @param input - The language input (e.g., "Kotlin", "KOTLIN", "kt", "java", "py")
  * @returns The ProgrammingLanguage string value (e.g., "KOTLIN", "JAVA", "PYTHON")
- *          Falls back to "GENERIC" for unknown extensions
+ *          Falls back to "GENERIC" for unknown inputs
  */
-export function convertProgrammingLanguage(extension: string): string {
-  if (!extension || extension.trim() === '') {
+export function convertProgrammingLanguage(input: string): string {
+  if (!input || input.trim() === '') {
     return ProgrammingLanguage.GENERIC;
   }
 
-  const lowerExtension = extension.trim().toLowerCase();
-
-  // Search through ProgrammingLanguageDetails to find a match by file extension
-  for (const [language, info] of Object.entries(ProgrammingLanguageDetails)) {
-    if (info.fileExtensions.some((ext) => ext.toLowerCase() === lowerExtension)) {
-      return language;
-    }
-  }
-
-  // Fallback to GENERIC for unknown extensions
+  try {
+    return stringToProgrammingLanguage(input);
+  } catch {
   return ProgrammingLanguage.GENERIC;
+  }
 }
 
 // ============================================================================

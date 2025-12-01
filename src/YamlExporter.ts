@@ -134,6 +134,11 @@ export class YamlExporter {
     const inferredLanguage = this.inferLanguage(practice);
     const allExamples: CodeExample[] = [];
 
+    // Warn if inferred language is unknown (affects unit tests)
+    if (inferredLanguage === 'unknown' && (practice.detectionUnitTests?.length ?? 0) > 0) {
+      console.warn(`Warning: Practice "${practice.name}" has unit tests but language could not be inferred (using "unknown")`);
+    }
+
     // Process unit tests
     for (const test of practice.detectionUnitTests ?? []) {
       allExamples.push(this.processUnitTest(test, inferredLanguage));
@@ -142,7 +147,14 @@ export class YamlExporter {
     // Process fileWorkshop examples
     for (const example of practice.examples) {
       if (example.fileWorkshop?.contents) {
-        allExamples.push(this.processFileWorkshopExample(example));
+        const processedExample = this.processFileWorkshopExample(example);
+        
+        // Warn if file workshop example has unknown language
+        if (processedExample.language === 'unknown') {
+          console.warn(`Warning: Practice "${practice.name}" has a file workshop example with unknown language (path: ${example.fileWorkshop?.path || 'no path'})`);
+        }
+        
+        allExamples.push(processedExample);
       }
     }
 

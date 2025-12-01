@@ -10,6 +10,8 @@ import { CategoryMapper } from './CategoryMapper.js';
 import { PackmindAPI } from './PackmindAPI.js';
 import { PracticeToStandardConvertor } from './PracticeToStandardConvertor.js';
 import { stringToProgrammingLanguage } from './ProgrammingLanguage.js';
+import { PackmindV3Connector } from './PackmindV3Connector.js';
+import type { ValidationOutput } from './types.js';
 
 // Load environment variables from .env file
 config();
@@ -137,9 +139,10 @@ function buildSlugToSpaceIdMap(spacesMapping: Map<string, string>): Map<string, 
 // ============================================================================
 
 interface CliArgs {
-  command: 'init' | 'stats' | 'map' | 'get-spaces' | 'validate';
+  command: 'init' | 'stats' | 'map' | 'get-spaces' | 'validate' | 'import';
   inputFile?: string;
   outputFile?: string;
+  inputFiles?: string[];
 }
 
 /**
@@ -156,6 +159,7 @@ Commands:
   --init <input.jsonl> [output.yaml]   Convert single JSONL file to YAML format
   --stats                              Display practice statistics (default)
   --validate                           Generate validation JSON with standards, rules, and examples
+  --import <file1.json,file2.json,...> Import standards validation JSON to Packmind V3
   --help                               Show this help message
 
 Workflow:
@@ -171,6 +175,7 @@ Environment Variables:
   SOURCE_PACKMIND_API_KEY              Required for --map/--get-spaces: Your Packmind API key
   OPENAI_API_KEY                       Required for --map: Your OpenAI API key
   OPENAI_MODEL                         Optional for --map: Model to use (default: gpt-5.1-mini)
+  PACKMIND_V3_API_KEY                  Required for --import: Your Packmind V3 API key
 
 Examples:
   npx packmind-legacy-import --map                    # Run full pipeline (recommended)
@@ -179,6 +184,8 @@ Examples:
   npx packmind-legacy-import --init file.jsonl        # Process single file
   npx packmind-legacy-import --stats
   npx packmind-legacy-import --validate
+  npx packmind-legacy-import --import file.json                    # Import single file
+  npx packmind-legacy-import --import file1.json,file2.json        # Import multiple files
 `);
 }
 
@@ -223,6 +230,30 @@ function parseArgs(args: string[]): CliArgs {
 
   if (relevantArgs.includes('--validate')) {
     return { command: 'validate' };
+  }
+
+  if (relevantArgs.includes('--import')) {
+    const importIndex = relevantArgs.indexOf('--import');
+    const filesArg = relevantArgs[importIndex + 1];
+
+    if (!filesArg || filesArg.startsWith('--')) {
+      console.error('Error: --import requires at least one file path');
+      console.error('Usage: --import file1.json,file2.json,...');
+      process.exit(1);
+    }
+
+    // Parse comma-separated file list
+    const inputFiles = filesArg.split(',').map(f => f.trim()).filter(f => f.length > 0);
+
+    if (inputFiles.length === 0) {
+      console.error('Error: --import requires at least one file path');
+      process.exit(1);
+    }
+
+    return {
+      command: 'import',
+      inputFiles,
+    };
   }
 
   // Default command is stats
@@ -780,6 +811,103 @@ function runValidateCommand(): void {
   console.log('='.repeat(60));
 }
 
+/**
+ * Runs the import command to upload standards validation JSON to Packmind V3
+ * @param inputFiles - List of JSON file paths to import
+ * @throws Error if API key is missing, files don't exist, or API call fails
+ */
+async function runImportCommand(inputFiles: string[]): Promise<void> {
+  const apiKey = process.env['PACKMIND_V3_API_KEY']?.trim();
+
+  if (!apiKey || apiKey.length === 0) {
+    throw new Error('PACKMIND_V3_API_KEY environment variable is not set or is empty. Please set it in your .env file or environment.');
+  }
+
+  console.log('');
+  console.log('='.repeat(60));
+  console.log('Import to Packmind V3');
+  console.log('='.repeat(60));
+  console.log(`Files to import: ${inputFiles.length}`);
+  console.log('');
+
+  const connector = new PackmindV3Connector(apiKey);
+  let successCount = 0;
+  let errorCount = 0;
+
+  for (const filePath of inputFiles) {
+    const resolvedPath = resolve(filePath);
+    const fileName = basename(resolvedPath);
+
+    console.log('-'.repeat(60));
+    console.log(`Processing: ${fileName}`);
+    console.log('-'.repeat(60));
+
+    // Validate file exists
+    if (!existsSync(resolvedPath)) {
+      console.error(`  ❌ Error: File not found: ${resolvedPath}`);
+      errorCount++;
+      console.log('');
+      continue;
+    }
+
+    // Validate file is JSON
+    if (!resolvedPath.endsWith('.json')) {
+      console.error(`  ❌ Error: File must be a .json file: ${resolvedPath}`);
+      errorCount++;
+      console.log('');
+      continue;
+    }
+
+    try {
+      // Read and parse JSON content
+      console.log(`  Reading file...`);
+      const fileContent = readFileSync(resolvedPath, 'utf-8');
+      const data: ValidationOutput = JSON.parse(fileContent);
+
+      // Validate structure
+      if (!data.standards || !Array.isArray(data.standards)) {
+        throw new Error('Invalid JSON structure: missing "standards" array');
+      }
+
+      console.log(`  Standards: ${data.standards.length}`);
+      let totalRules = 0;
+      for (const standard of data.standards) {
+        totalRules += standard.rules?.length || 0;
+      }
+      console.log(`  Total rules: ${totalRules}`);
+
+      // Import to Packmind V3
+      console.log(`  Uploading to Packmind V3...`);
+      const result = await connector.importLegacy(data);
+
+      console.log(`  ✅ Import successful`);
+      if (result.message) {
+        console.log(`  Message: ${result.message}`);
+      }
+      successCount++;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`  ❌ Error: ${errorMessage}`);
+      errorCount++;
+    }
+
+    console.log('');
+  }
+
+  console.log('='.repeat(60));
+  console.log('Import Summary');
+  console.log('='.repeat(60));
+  console.log(`Successful: ${successCount}`);
+  if (errorCount > 0) {
+    console.log(`Failed: ${errorCount}`);
+  }
+  console.log('='.repeat(60));
+
+  if (errorCount > 0 && successCount === 0) {
+    throw new Error('All imports failed');
+  }
+}
+
 // ============================================================================
 // Main Entry Point
 // ============================================================================
@@ -806,6 +934,9 @@ async function main(): Promise<void> {
         break;
       case 'validate':
         runValidateCommand();
+        break;
+      case 'import':
+        await runImportCommand(args.inputFiles || []);
         break;
     }
   } catch (error) {
