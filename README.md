@@ -40,6 +40,8 @@ Export your practices from your current Packmind organization:
 - Go to `https://<orga_name>.packmind.app` (or your self-hosted instance)
 - Export your practices as `.jsonl` files
 
+![How to export practices from the Packmind web UI](ExportPractices.gif)
+
 Place these `.jsonl` files in the `res/` directory. You don't need to give any particular name to these files — the tool will automatically discover and process all `.jsonl` files in the folder.
 
 ### Step 2: Run the `--map` command
