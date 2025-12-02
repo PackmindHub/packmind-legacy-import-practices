@@ -1,14 +1,18 @@
-import OpenAI from 'openai';
+import OpenAI, { AzureOpenAI } from 'openai';
 import { config } from 'dotenv';
 
 // Load environment variables from .env file
 config();
+
+// Default Azure OpenAI API version
+const DEFAULT_AZURE_OPENAI_API_VERSION = '2024-12-01-preview';
 
 /**
  * Interface for LLM service that exposes a method to execute prompts
  */
 export interface LLMServicePrompt {
   executePrompt(prompt: string): Promise<string>;
+  getModel(): string;
 }
 
 /**
@@ -72,3 +76,115 @@ export class OpenAIService implements LLMServicePrompt {
   }
 }
 
+/**
+ * Azure OpenAI implementation of the LLMServicePrompt interface.
+ * Uses Azure-specific deployment model architecture where models are accessed
+ * via deployment names rather than direct model identifiers.
+ */
+export class AzureOpenAIService implements LLMServicePrompt {
+  private client: AzureOpenAI;
+  private deployment: string;
+
+  constructor() {
+    const apiKey = process.env['AZURE_OPENAI_API_KEY'];
+    const endpoint = process.env['AZURE_OPENAI_ENDPOINT'];
+    const deployment = process.env['AZURE_OPENAI_DEPLOYMENT'];
+    const apiVersion = process.env['AZURE_OPENAI_API_VERSION'] || DEFAULT_AZURE_OPENAI_API_VERSION;
+
+    if (!apiKey) {
+      throw new Error('AZURE_OPENAI_API_KEY environment variable is not set. Please create a .env file with your API key.');
+    }
+    if (!endpoint) {
+      throw new Error('AZURE_OPENAI_ENDPOINT environment variable is not set. Please set it to your Azure OpenAI resource endpoint (e.g., https://my-resource.openai.azure.com).');
+    }
+    if (!deployment) {
+      throw new Error('AZURE_OPENAI_DEPLOYMENT environment variable is not set. Please set it to your Azure OpenAI deployment name.');
+    }
+
+    this.client = new AzureOpenAI({
+      apiKey,
+      endpoint,
+      apiVersion,
+    });
+    this.deployment = deployment;
+  }
+
+  /**
+   * Executes a prompt using the Azure OpenAI API
+   * @param prompt - The prompt to send to the LLM
+   * @returns The response content from the LLM
+   */
+  async executePrompt(prompt: string): Promise<string> {
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.deployment,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert software engineer specializing in categorizing coding practices and standards. You provide structured, consistent responses in YAML format.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.3, // Lower temperature for more consistent categorization
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error('No response content received from Azure OpenAI');
+      }
+
+      return content;
+    } catch (error) {
+      if (error instanceof OpenAI.APIError) {
+        throw new Error(`Azure OpenAI API error: ${error.message}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Returns the deployment name being used
+   */
+  getModel(): string {
+    return this.deployment;
+  }
+}
+
+/**
+ * Factory function to create the appropriate LLM service based on the LLM_PROVIDER environment variable.
+ * 
+ * @returns An instance of OpenAIService or AzureOpenAIService
+ * @throws Error if LLM_PROVIDER is not set or has an invalid value
+ * 
+ * @example
+ * ```typescript
+ * // Set LLM_PROVIDER=OPENAI for OpenAI
+ * // Set LLM_PROVIDER=AZURE_OPENAI for Azure OpenAI
+ * const llmService = createLLMService();
+ * const response = await llmService.executePrompt('Hello world');
+ * ```
+ */
+export function createLLMService(): LLMServicePrompt {
+  const provider = process.env['LLM_PROVIDER'];
+
+  if (!provider) {
+    throw new Error(
+      'LLM_PROVIDER environment variable is not set. Please set it to "OPENAI" or "AZURE_OPENAI".'
+    );
+  }
+
+  if (provider === 'OPENAI') {
+    return new OpenAIService();
+  }
+
+  if (provider === 'AZURE_OPENAI') {
+    return new AzureOpenAIService();
+  }
+
+  throw new Error(
+    `Invalid LLM_PROVIDER: "${provider}". Must be "OPENAI" or "AZURE_OPENAI".`
+  );
+}

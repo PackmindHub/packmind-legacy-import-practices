@@ -1,7 +1,7 @@
 import { writeFileSync, existsSync, readFileSync } from 'fs';
 import yaml from 'js-yaml';
 import { YamlMinifier } from './YamlMinifier.js';
-import { OpenAIService, type LLMServicePrompt } from './LLMService.js';
+import { createLLMService, type LLMServicePrompt } from './LLMService.js';
 
 // ============================================================================
 // Types
@@ -516,7 +516,7 @@ export class CategoryMapper {
   constructor(config: CategoryMapperConfig, llmService?: LLMServicePrompt) {
     this.config = config;
     this.minifier = new YamlMinifier();
-    this.llmService = llmService || new OpenAIService();
+    this.llmService = llmService || createLLMService();
   }
 
   /**
@@ -568,9 +568,7 @@ export class CategoryMapper {
     console.log('STEP 3: Sending to LLM for categorization');
     console.log('='.repeat(60));
     
-    if (this.llmService instanceof OpenAIService) {
-      console.log(`Using model: ${this.llmService.getModel()}`);
-    }
+    console.log(`Using model: ${this.llmService.getModel()}`);
     console.log('Waiting for LLM response...');
     
     return await this.llmService.executePrompt(prompt);
@@ -643,9 +641,7 @@ export class CategoryMapper {
         
         const retryPrompt = buildRetryPrompt(missing, existingStandards, practiceDescriptions);
         console.log(`\n  Sending retry prompt to LLM...`);
-        if (this.llmService instanceof OpenAIService) {
-          console.log(`  Using model: ${this.llmService.getModel()}`);
-        }
+        console.log(`  Using model: ${this.llmService.getModel()}`);
         console.log(`  Prompt length: ${retryPrompt.length} characters`);
         console.log(`  Waiting for LLM response...`);
         

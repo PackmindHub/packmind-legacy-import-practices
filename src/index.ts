@@ -420,9 +420,20 @@ Workflow:
 
 Environment Variables:
   SOURCE_PACKMIND_API_KEY              Required for --map/--get-spaces: Your Packmind API key
-  OPENAI_API_KEY                       Required for --map: Your OpenAI API key
-  OPENAI_MODEL                         Optional for --map: Model to use (default: gpt-5.1-mini)
   PACKMIND_V3_API_KEY                  Required for --import: Your Packmind V3 API key
+
+  LLM Provider (required for --map):
+  LLM_PROVIDER                         Required: "OPENAI" or "AZURE_OPENAI"
+
+  OpenAI Provider (when LLM_PROVIDER=OPENAI):
+  OPENAI_API_KEY                       Required: Your OpenAI API key
+  OPENAI_MODEL                         Optional: Model to use (default: gpt-5.1)
+
+  Azure OpenAI Provider (when LLM_PROVIDER=AZURE_OPENAI):
+  AZURE_OPENAI_API_KEY                 Required: Your Azure OpenAI API key
+  AZURE_OPENAI_ENDPOINT                Required: Azure endpoint (e.g., https://my-resource.openai.azure.com)
+  AZURE_OPENAI_DEPLOYMENT              Required: Deployment name
+  AZURE_OPENAI_API_VERSION             Optional: API version (default: 2024-12-01-preview)
 
 Examples:
   npx packmind-legacy-import --map                    # Run full pipeline (recommended)
