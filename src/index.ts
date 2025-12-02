@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join, resolve, basename } from 'path';
-import { config } from 'dotenv';
+import { createInterface } from 'readline';
 import type { ParsedPractice, DetectionUnitTest, Example, Guidelines, Toolings } from './types.js';
 import { displayPracticeStats, displayPracticeList, displayCategoryStats } from './OutputAnalysis.js';
 import { YamlExporter } from './YamlExporter.js';
@@ -13,8 +13,7 @@ import { stringToProgrammingLanguage } from './ProgrammingLanguage.js';
 import { PackmindV3Connector } from './PackmindV3Connector.js';
 import type { ValidationOutput } from './types.js';
 
-// Load environment variables from .env file
-config();
+// Bun automatically loads .env files
 
 // ============================================================================
 // Space Utilities
@@ -103,6 +102,160 @@ function discoverStandardsMappingFiles(directory: string): string[] {
 }
 
 /**
+ * Discovers all .standards-validation.json files in a directory
+ */
+function discoverValidationFiles(directory: string): string[] {
+  if (!existsSync(directory)) {
+    return [];
+  }
+  
+  const files = readdirSync(directory);
+  return files
+    .filter(file => file.endsWith('.standards-validation.json'))
+    .map(file => join(directory, file))
+    .sort();
+}
+
+/**
+ * Stats for a validation file
+ */
+interface ValidationFileStats {
+  path: string;
+  filename: string;
+  standardsCount: number;
+  rulesCount: number;
+}
+
+/**
+ * Extracts stats from a validation JSON file
+ */
+function getValidationFileStats(filePath: string): ValidationFileStats {
+  const content = JSON.parse(readFileSync(filePath, 'utf-8')) as ValidationOutput;
+  let rulesCount = 0;
+  for (const standard of content.standards) {
+    rulesCount += standard.rules?.length || 0;
+  }
+  return {
+    path: filePath,
+    filename: basename(filePath),
+    standardsCount: content.standards.length,
+    rulesCount,
+  };
+}
+
+/**
+ * Prompts user for input via readline
+ */
+function promptUser(question: string): Promise<string> {
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+}
+
+/**
+ * Parses user selection input into array of indices
+ * Accepts: empty string (all), "all", or comma-separated numbers like "1,3,5"
+ * @returns Array of 0-based indices, or null for "all"
+ */
+function parseSelectionInput(input: string, maxIndex: number): number[] | null {
+  const trimmed = input.trim().toLowerCase();
+  
+  // Empty input or "all" means select all
+  if (trimmed === '' || trimmed === 'all') {
+    return null; // null means "all"
+  }
+  
+  // Parse comma-separated numbers
+  const parts = trimmed.split(',').map(s => s.trim()).filter(s => s.length > 0);
+  const indices: number[] = [];
+  
+  for (const part of parts) {
+    const num = parseInt(part, 10);
+    if (isNaN(num) || num < 1 || num > maxIndex) {
+      throw new Error(`Invalid selection: "${part}". Please enter numbers between 1 and ${maxIndex}.`);
+    }
+    indices.push(num - 1); // Convert to 0-based index
+  }
+  
+  if (indices.length === 0) {
+    throw new Error('No valid selections provided.');
+  }
+  
+  // Remove duplicates and sort
+  return [...new Set(indices)].sort((a, b) => a - b);
+}
+
+/**
+ * Displays validation files with stats and prompts user for selection
+ * @returns Array of selected file stats
+ */
+async function promptFileSelection(allStats: ValidationFileStats[]): Promise<ValidationFileStats[]> {
+  console.log('');
+  console.log('='.repeat(60));
+  console.log(`Discovered ${allStats.length} validation file(s) in res/:`);
+  console.log('='.repeat(60));
+  console.log('');
+  
+  // Display numbered list with stats
+  for (let i = 0; i < allStats.length; i++) {
+    const stats = allStats[i];
+    if (!stats) continue;
+    console.log(`  [${i + 1}] ${stats.filename}`);
+    console.log(`      Standards: ${stats.standardsCount} | Rules: ${stats.rulesCount}`);
+    console.log('');
+  }
+  
+  // Prompt for selection
+  const selectionInput = await promptUser('Select files to import (enter numbers like "1,3" or press Enter for all): ');
+  
+  let selectedStats: ValidationFileStats[];
+  let selectionDescription: string;
+  
+  try {
+    const indices = parseSelectionInput(selectionInput, allStats.length);
+    
+    if (indices === null) {
+      // All selected
+      selectedStats = allStats;
+      selectionDescription = 'ALL';
+    } else {
+      selectedStats = indices.map(i => allStats[i]).filter((s): s is ValidationFileStats => s !== undefined);
+      selectionDescription = indices.map(i => i + 1).join(', ');
+    }
+  } catch (error) {
+    throw error;
+  }
+  
+  // Calculate totals for selected files
+  let totalStandards = 0;
+  let totalRules = 0;
+  for (const stats of selectedStats) {
+    totalStandards += stats.standardsCount;
+    totalRules += stats.rulesCount;
+  }
+  
+  console.log('');
+  console.log(`Selected: ${selectionDescription} (${selectedStats.length} file(s), ${totalStandards} standards, ${totalRules} rules total)`);
+  
+  // Confirm selection
+  const confirm = await promptUser('Proceed with import? (y/n): ');
+  
+  if (confirm.toLowerCase() !== 'y' && confirm.toLowerCase() !== 'yes') {
+    throw new Error('Import cancelled by user.');
+  }
+  
+  return selectedStats;
+}
+
+/**
  * Extracts the space slug from a standards-mapping.yaml filename
  * e.g., "bforbank-android.standards-mapping.yaml" -> "bforbank-android"
  */
@@ -139,10 +292,10 @@ function buildSlugToSpaceIdMap(spacesMapping: Map<string, string>): Map<string, 
 // ============================================================================
 
 interface CliArgs {
-  command: 'init' | 'stats' | 'map' | 'get-spaces' | 'validate' | 'import';
+  command: 'init' | 'stats' | 'map' | 'get-spaces' | 'import';
   inputFile?: string;
   outputFile?: string;
-  inputFiles?: string[];
+  importOne?: boolean;
 }
 
 /**
@@ -158,8 +311,8 @@ Commands:
   --init                               Process all .jsonl files in res/ (manual/debug)
   --init <input.jsonl> [output.yaml]   Convert single JSONL file to YAML format
   --stats                              Display practice statistics (default)
-  --validate                           Generate validation JSON with standards, rules, and examples
-  --import <file1.json,file2.json,...> Import standards validation JSON to Packmind V3
+  --import                             Import .standards-validation.json files to Packmind V3
+  --import --one                       Import only the first standard from each file
   --help                               Show this help message
 
 Workflow:
@@ -168,6 +321,11 @@ Workflow:
      - Fetches spaces.json from Packmind API
      - Processes .jsonl files into {space-slug}.yaml + {space-slug}.minified.yaml
      - Generates {space-slug}.standards-mapping.yaml for each space using LLM
+  3. Run --import to import standards to Packmind V3:
+     - Scans res/ for .standards-validation.json files
+     - Shows file list with standards/rules count
+     - Prompts to select files (enter numbers or press Enter for all)
+     - Imports selected files to Packmind V3
 
   Note: --get-spaces and --init are available for manual control/debugging.
 
@@ -183,9 +341,8 @@ Examples:
   npx packmind-legacy-import --init                   # Process .jsonl files only (debug)
   npx packmind-legacy-import --init file.jsonl        # Process single file
   npx packmind-legacy-import --stats
-  npx packmind-legacy-import --validate
-  npx packmind-legacy-import --import file.json                    # Import single file
-  npx packmind-legacy-import --import file1.json,file2.json        # Import multiple files
+  npx packmind-legacy-import --import                 # Interactive import of validation files
+  npx packmind-legacy-import --import --one           # Import first standard only per file
 `);
 }
 
@@ -228,31 +385,13 @@ function parseArgs(args: string[]): CliArgs {
     return { command: 'get-spaces' };
   }
 
-  if (relevantArgs.includes('--validate')) {
-    return { command: 'validate' };
-  }
-
   if (relevantArgs.includes('--import')) {
-    const importIndex = relevantArgs.indexOf('--import');
-    const filesArg = relevantArgs[importIndex + 1];
-
-    if (!filesArg || filesArg.startsWith('--')) {
-      console.error('Error: --import requires at least one file path');
-      console.error('Usage: --import file1.json,file2.json,...');
-      process.exit(1);
-    }
-
-    // Parse comma-separated file list
-    const inputFiles = filesArg.split(',').map(f => f.trim()).filter(f => f.length > 0);
-
-    if (inputFiles.length === 0) {
-      console.error('Error: --import requires at least one file path');
-      process.exit(1);
-    }
+    // Check for --one flag
+    const importOne = relevantArgs.includes('--one');
 
     return {
       command: 'import',
-      inputFiles,
+      importOne,
     };
   }
 
@@ -670,153 +809,15 @@ async function runGetSpacesCommand(): Promise<void> {
 }
 
 /**
- * Runs the validate command to generate validation JSON with standards, rules, and examples
- * Processes all .standards-mapping.yaml files found in res/ directory
- * Loads all .jsonl files and matches practices by name and space ID
+ * Imports validation data to Packmind V3
+ * @param filesToImport - Array of validation file stats to import
+ * @param importOne - If true, only import the first standard from each file
+ * @throws Error if API key is missing or API call fails
  */
-function runValidateCommand(): void {
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = dirname(__filename);
-  const resDir = join(__dirname, '..', 'res');
-  
-  const spacesPath = join(resDir, 'spaces.json');
-  
-  // Validate spaces.json exists
-  if (!existsSync(spacesPath)) {
-    console.error(`Error: Spaces file not found: ${spacesPath}`);
-    console.error('Use --get-spaces to fetch spaces from Packmind API first.');
-    process.exit(1);
-  }
-  
-  // Load spaces mapping and build reverse lookup (slug -> spaceId)
-  const spacesMapping = loadSpacesMapping(spacesPath);
-  const slugToSpaceId = buildSlugToSpaceIdMap(spacesMapping);
-  
-  // Discover all .jsonl files and load all practices
-  const jsonlFiles = discoverJsonlFiles(resDir);
-  
-  if (jsonlFiles.length === 0) {
-    console.error(`Error: No .jsonl files found in: ${resDir}`);
-    console.error('Place your practices .jsonl files in the res/ folder.');
-    process.exit(1);
-  }
-  
-  console.log('='.repeat(60));
-  console.log('Generating Validation JSON');
-  console.log('='.repeat(60));
-  console.log(`Found ${jsonlFiles.length} .jsonl file(s)`);
-  
-  // Load all practices from all .jsonl files
-  const allPractices: ParsedPractice[] = [];
-  for (const jsonlPath of jsonlFiles) {
-    const practices = loadPracticesFromFile(jsonlPath);
-    allPractices.push(...practices);
-    console.log(`  Loaded ${practices.length} practice(s) from ${basename(jsonlPath)}`);
-  }
-  console.log(`Total practices loaded: ${allPractices.length}`);
-  console.log('');
-  
-  // Discover all .standards-mapping.yaml files
-  const mappingFiles = discoverStandardsMappingFiles(resDir);
-  
-  if (mappingFiles.length === 0) {
-    console.error(`Error: No .standards-mapping.yaml files found in: ${resDir}`);
-    console.error('Use --map to generate standards mapping using LLM first.');
-    process.exit(1);
-  }
-  
-  console.log(`Found ${mappingFiles.length} standards mapping file(s)`);
-  console.log('');
-  
-  let processedCount = 0;
-  
-  for (const mappingPath of mappingFiles) {
-    const fileName = basename(mappingPath);
-    const slug = extractSlugFromStandardsMappingFilename(fileName);
-    
-    if (!slug) {
-      console.log(`⚠️  Skipping: Could not extract slug from ${fileName}`);
-      continue;
-    }
-    
-    // Get the space ID for this slug
-    const spaceId = slugToSpaceId.get(slug);
-    
-    if (!spaceId) {
-      console.log(`⚠️  Skipping ${slug}: No matching space found in spaces.json`);
-      console.log(`   Available slugs: ${[...slugToSpaceId.keys()].join(', ')}`);
-      continue;
-    }
-    
-    // Filter practices belonging to this space
-    const spacePractices = allPractices.filter(p => p.space === spaceId);
-    
-    if (spacePractices.length === 0) {
-      console.log(`⚠️  Skipping ${slug}: No practices found for space ID ${spaceId}`);
-      continue;
-    }
-    
-    const outputPath = join(resDir, `${slug}.standards-validation.json`);
-    
-    console.log('-'.repeat(60));
-    console.log(`Processing: ${slug}`);
-    console.log('-'.repeat(60));
-    console.log(`  Mapping: ${fileName}`);
-    console.log(`  Space ID: ${spaceId}`);
-    console.log(`  Practices found: ${spacePractices.length}`);
-    
-    // Create convertor and run conversion
-    const convertor = new PracticeToStandardConvertor({
-      spacesJsonPath: spacesPath,
-      standardsMappingPath: mappingPath,
-      contextLines: 2,
-    });
-    
-    console.log('  Converting practices to standards...');
-    const output = convertor.convert(spacePractices);
-    
-    // Write output
-    writeFileSync(outputPath, JSON.stringify(output, null, 2), 'utf-8');
-    
-    // Calculate stats for this space
-    let totalRules = 0;
-    let totalPositiveExamples = 0;
-    let totalNegativeExamples = 0;
-    let rulesWithDetection = 0;
-    
-    for (const standard of output.standards) {
-      totalRules += standard.rules.length;
-      for (const rule of standard.rules) {
-        totalPositiveExamples += rule.positiveExamples.length;
-        totalNegativeExamples += rule.negativeExamples.length;
-        if (rule.detectionProgram) {
-          rulesWithDetection++;
-        }
-      }
-    }
-    
-    console.log(`  Standards: ${output.standards.length}`);
-    console.log(`  Rules: ${totalRules}`);
-    console.log(`  Rules with detection: ${rulesWithDetection}`);
-    console.log(`  Positive examples: ${totalPositiveExamples}`);
-    console.log(`  Negative examples: ${totalNegativeExamples}`);
-    console.log(`  → Output: ${basename(outputPath)}`);
-    console.log('');
-    
-    processedCount++;
-  }
-  
-  console.log('='.repeat(60));
-  console.log(`Done! Processed ${processedCount} space(s).`);
-  console.log('='.repeat(60));
-}
-
-/**
- * Runs the import command to upload standards validation JSON to Packmind V3
- * @param inputFiles - List of JSON file paths to import
- * @throws Error if API key is missing, files don't exist, or API call fails
- */
-async function runImportCommand(inputFiles: string[]): Promise<void> {
+async function importValidationFiles(
+  filesToImport: ValidationFileStats[],
+  importOne: boolean = false
+): Promise<void> {
   const apiKey = process.env['PACKMIND_V3_API_KEY']?.trim();
 
   if (!apiKey || apiKey.length === 0) {
@@ -825,66 +826,82 @@ async function runImportCommand(inputFiles: string[]): Promise<void> {
 
   console.log('');
   console.log('='.repeat(60));
-  console.log('Import to Packmind V3');
+  console.log('Importing to Packmind V3');
   console.log('='.repeat(60));
-  console.log(`Files to import: ${inputFiles.length}`);
+  if (importOne) {
+    console.log('Mode: First standard only (--one)');
+  }
   console.log('');
 
   const connector = new PackmindV3Connector(apiKey);
   let successCount = 0;
   let errorCount = 0;
 
-  for (const filePath of inputFiles) {
-    const resolvedPath = resolve(filePath);
-    const fileName = basename(resolvedPath);
-
+  for (const fileStats of filesToImport) {
     console.log('-'.repeat(60));
-    console.log(`Processing: ${fileName}`);
+    console.log(`Importing: ${fileStats.filename}`);
     console.log('-'.repeat(60));
-
-    // Validate file exists
-    if (!existsSync(resolvedPath)) {
-      console.error(`  ❌ Error: File not found: ${resolvedPath}`);
-      errorCount++;
-      console.log('');
-      continue;
-    }
-
-    // Validate file is JSON
-    if (!resolvedPath.endsWith('.json')) {
-      console.error(`  ❌ Error: File must be a .json file: ${resolvedPath}`);
-      errorCount++;
-      console.log('');
-      continue;
-    }
 
     try {
-      // Read and parse JSON content
-      console.log(`  Reading file...`);
-      const fileContent = readFileSync(resolvedPath, 'utf-8');
-      const data: ValidationOutput = JSON.parse(fileContent);
+      // Load the validation file
+      const data = JSON.parse(readFileSync(fileStats.path, 'utf-8')) as ValidationOutput;
 
-      // Validate structure
-      if (!data.standards || !Array.isArray(data.standards)) {
-        throw new Error('Invalid JSON structure: missing "standards" array');
+      // Determine which standards to import
+      let standardsToImport = data.standards;
+      if (importOne && data.standards.length > 0) {
+        const firstStandard = data.standards[0];
+        if (firstStandard) {
+          standardsToImport = [firstStandard];
+          console.log(`  Mode: Importing first standard only`);
+        }
       }
 
-      console.log(`  Standards: ${data.standards.length}`);
+      console.log(`  Standards to import: ${standardsToImport.length}`);
       let totalRules = 0;
-      for (const standard of data.standards) {
+      for (const standard of standardsToImport) {
         totalRules += standard.rules?.length || 0;
       }
       console.log(`  Total rules: ${totalRules}`);
+      console.log('');
 
-      // Import to Packmind V3
-      console.log(`  Uploading to Packmind V3...`);
-      const result = await connector.importLegacy(data);
+      // Import each standard one by one
+      let standardSuccessCount = 0;
+      let standardErrorCount = 0;
 
-      console.log(`  ✅ Import successful`);
-      if (result.message) {
-        console.log(`  Message: ${result.message}`);
+      for (let i = 0; i < standardsToImport.length; i++) {
+        const standard = standardsToImport[i];
+        if (!standard) continue;
+
+        const progress = `[${i + 1}/${standardsToImport.length}]`;
+        const rulesCount = standard.rules?.length || 0;
+
+        console.log(`  ${progress} Importing: "${standard.name}" (${rulesCount} rules)`);
+
+        try {
+          const singleStandardData: ValidationOutput = { standards: [standard] };
+          const result = await connector.importLegacy(singleStandardData);
+
+          console.log(`  ${progress} ✅ Success`);
+          if (result.message) {
+            console.log(`  ${progress}    Message: ${result.message}`);
+          }
+          standardSuccessCount++;
+        } catch (standardError) {
+          const errorMessage = standardError instanceof Error ? standardError.message : String(standardError);
+          console.error(`  ${progress} ❌ Failed: ${errorMessage}`);
+          standardErrorCount++;
+        }
       }
-      successCount++;
+
+      console.log('');
+      console.log(`  File summary: ${standardSuccessCount} succeeded, ${standardErrorCount} failed`);
+
+      if (standardSuccessCount > 0) {
+        successCount++;
+      }
+      if (standardErrorCount > 0) {
+        errorCount++;
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(`  ❌ Error: ${errorMessage}`);
@@ -906,6 +923,52 @@ async function runImportCommand(inputFiles: string[]): Promise<void> {
   if (errorCount > 0 && successCount === 0) {
     throw new Error('All imports failed');
   }
+}
+
+/**
+ * Runs the import command with interactive file selection
+ * 1. Discovers existing .standards-validation.json files in res/
+ * 2. Prompts user to select which files to import
+ * 3. Imports selected files to Packmind V3
+ * @param importOne - If true, only import the first standard from each file
+ * @throws Error if no validation files found or import fails
+ */
+async function runImportCommand(importOne: boolean = false): Promise<void> {
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
+  const resDir = join(__dirname, '..', 'res');
+
+  // Discover all .standards-validation.json files
+  const validationFiles = discoverValidationFiles(resDir);
+
+  if (validationFiles.length === 0) {
+    throw new Error(`No .standards-validation.json files found in: ${resDir}\nUse --map to generate standards mapping and then generate validation files first.`);
+  }
+
+  // Get stats for each file
+  const allStats: ValidationFileStats[] = [];
+  for (const filePath of validationFiles) {
+    try {
+      const stats = getValidationFileStats(filePath);
+      allStats.push(stats);
+    } catch (error) {
+      console.warn(`Warning: Could not read ${basename(filePath)}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  if (allStats.length === 0) {
+    throw new Error('No valid validation files could be read.');
+  }
+
+  // Prompt user for file selection
+  const selectedFiles = await promptFileSelection(allStats);
+
+  if (selectedFiles.length === 0) {
+    throw new Error('No files selected for import.');
+  }
+
+  // Import selected files
+  await importValidationFiles(selectedFiles, importOne);
 }
 
 // ============================================================================
@@ -932,11 +995,8 @@ async function main(): Promise<void> {
       case 'get-spaces':
         await runGetSpacesCommand();
         break;
-      case 'validate':
-        runValidateCommand();
-        break;
       case 'import':
-        await runImportCommand(args.inputFiles || []);
+        await runImportCommand(args.importOne || false);
         break;
     }
   } catch (error) {

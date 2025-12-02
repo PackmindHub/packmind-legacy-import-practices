@@ -194,7 +194,7 @@ describe('addDescriptionAsCommentForLanguage', () => {
     const code = 'def test(): pass';
     const description = 'This is a test';
     
-    const result = addDescriptionAsCommentForLanguage(code, description, 'py');
+    const result = addDescriptionAsCommentForLanguage(code, description, 'PYTHON');
     
     expect(result).toBe('# This is a test\ndef test(): pass');
   });
@@ -415,9 +415,9 @@ describe('PracticeToStandardConvertor', () => {
       
       const description = convertor.buildStandardDescription(rules, practices);
       
-      expect(description).toContain('## rule 1: Rule A');
+      expect(description).toContain('## Rule A');
       expect(description).toContain('   Description A');
-      expect(description).toContain('## rule 2: Rule B');
+      expect(description).toContain('## Rule B');
       expect(description).toContain('   Description B');
     });
 
@@ -433,7 +433,7 @@ describe('PracticeToStandardConvertor', () => {
       
       const description = convertor.buildStandardDescription(rules, practices);
       
-      expect(description).toContain('## rule 1: Rule A');
+      expect(description).toContain('## Rule A');
       expect(description).toContain('   Line 1');
       expect(description).toContain('   Line 2');
       expect(description).toContain('   Line 3');
