@@ -1,6 +1,6 @@
 # Packmind Legacy Import
 
-A migration tool to convert coding practices from the legacy Packmind format to the new standards-based format in Packmind V3.
+A migration tool to convert coding practices from the legacy Packmind format to the new standards-based format in Packmind AI.
 
 ## Prerequisites
 
@@ -13,6 +13,7 @@ Create a `.env` file at the root of the project with the following variables:
 ```env
 # Required for --map and --get-spaces commands
 # Your API key from the legacy Packmind instance
+# Available from your current Packmind organization at `https://<orga_name>.packmind.app` (or from your self-hosted instance)
 SOURCE_PACKMIND_API_KEY=your_legacy_packmind_api_key
 
 # Required for --map command (LLM-based categorization)
@@ -22,15 +23,9 @@ OPENAI_API_KEY=your_openai_api_key
 OPENAI_MODEL=gpt-5.1
 
 # Required for --import command
-# Your API key from the new Packmind V3 instance
+# Your API key from the new Packmind instance (https://app.packmind.ai if on Cloud, or your custom self-hosted instance)
 PACKMIND_V3_API_KEY=your_packmind_v3_api_key
 ```
-
-### Where to find your API keys
-
-- **SOURCE_PACKMIND_API_KEY**: Available from your current Packmind organization at `https://<orga_name>.packmind.app` (or from your self-hosted instance)
-- **OPENAI_API_KEY**: Available from [OpenAI Platform](https://platform.openai.com/api-keys)
-- **PACKMIND_V3_API_KEY**: Available from your new Packmind V3 instance
 
 ## Migration Workflow
 
@@ -38,7 +33,7 @@ PACKMIND_V3_API_KEY=your_packmind_v3_api_key
 
 Export your practices from your current Packmind organization:
 - Go to `https://<orga_name>.packmind.app` (or your self-hosted instance)
-- Export your practices as `.jsonl` files
+- Export your practices as `.jsonl` files 
 
 ![How to export practices from the Packmind web UI](ExportPractices.gif)
 
@@ -83,7 +78,7 @@ This command will:
 2. Display a list of discovered files with their standards and rules count
 3. Prompt you to select which files to import (enter numbers like "1,3" or press Enter for all)
 4. Ask for confirmation before importing
-5. Import the selected standards to Packmind V3
+5. Import the selected standards to Packmind
 
 ```bash
 # Import only the first standard from each file (useful for testing)
@@ -96,12 +91,12 @@ bun run dev -- --import --one
 
 The fundamental mapping in this migration is:
 
-| Legacy Packmind | Packmind V3 |
+| Legacy Packmind | Packmind |
 |-----------------|-------------|
 | Practice | Rule |
 | Space | Standard(s) |
 
-A single **practice** in the legacy format becomes a **rule** within a **standard** in Packmind V3.
+A single **practice** in the legacy format becomes a **rule** within a **standard** in the new Packmind.
 
 The goal of this migration is not just to convert practices to rules, but to **group them into meaningful, focused standards** that are more granular than the original spaces.
 
@@ -111,7 +106,7 @@ Detection programs from legacy practices are preserved **only** when:
 - The practice was configured to be detectable
 - The practice had an active detection program
 
-If these conditions are not met, the detection program is not imported. You can always regenerate detection programs later using Packmind V3's built-in tools.
+If these conditions are not met, the detection program is not imported. You can always regenerate detection programs later using Packmind's linter feature.
 
 ## Command Reference
 
