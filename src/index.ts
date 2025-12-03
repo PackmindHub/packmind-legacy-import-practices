@@ -526,8 +526,9 @@ export function parsePractice(jsonString: string): ParsedPractice {
     if (!parsed.name) {
       throw new Error('Missing required property: name');
     }
+    // Use name as fallback if description is missing
     if (!parsed.description) {
-      throw new Error('Missing required property: description');
+      parsed.description = parsed.name;
     }
     if (!parsed.categories) {
       throw new Error('Missing required property: categories');
@@ -1247,6 +1248,9 @@ async function main(): Promise<void> {
         await runImportCommand(args.importOne || false);
         break;
     }
+    
+    // Exit successfully after command completion
+    process.exit(0);
   } catch (error) {
     console.error('Error:', error instanceof Error ? error.message : String(error));
     process.exit(1);

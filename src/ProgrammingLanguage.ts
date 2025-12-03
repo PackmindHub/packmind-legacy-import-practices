@@ -201,12 +201,24 @@ export const getAllProgrammingLanguages = (): ProgrammingLanguage[] => {
  * @returns ProgrammingLanguage enum value
  * @throws Error if no matching language is found
  */
+// Alias mapping for legacy language names that differ from the current enum values
+const LANGUAGE_ALIASES: Record<string, ProgrammingLanguage> = {
+  TYPESCRIPT_JSX: ProgrammingLanguage.TYPESCRIPT_TSX,
+};
+
 export const stringToProgrammingLanguage = (
   input: string,
 ): ProgrammingLanguage => {
   const trimmedInput = input.trim();
   if (!trimmedInput) {
     throw new Error('Language input cannot be empty');
+  }
+
+  const upperInput = trimmedInput.toUpperCase();
+
+  // Check alias mappings first (for legacy naming)
+  if (LANGUAGE_ALIASES[upperInput]) {
+    return LANGUAGE_ALIASES[upperInput];
   }
 
   const lowerInput = trimmedInput.toLowerCase();
