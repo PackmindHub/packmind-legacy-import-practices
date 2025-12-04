@@ -402,6 +402,73 @@ describe('PracticeToStandardConvertor', () => {
       expect(rule.positiveExamples.length).toBe(1);
       expect(rule.negativeExamples.length).toBe(1);
     });
+
+    it('should include detection program with AST mode when sourceCodeState is AST', () => {
+      const practice = createMockPractice({
+        suggestionsDisabled: false,
+        toolings: createMockToolings({ status: 'SUCCESS', sourceCodeState: 'AST' }),
+        detectionUnitTests: [
+          createMockDetectionUnitTest({ isCompliant: true, code: 'positive code' }),
+        ],
+        examples: [],
+      });
+      
+      const rule = convertor.convertPracticeToRule(practice);
+      
+      expect(rule.detectionProgram).toBeDefined();
+      expect(rule.detectionProgram!.mode).toBe('AST');
+    });
+
+    it('should include detection program with RAW mode when sourceCodeState is RAW', () => {
+      const practice = createMockPractice({
+        suggestionsDisabled: false,
+        toolings: createMockToolings({ status: 'SUCCESS', sourceCodeState: 'RAW' }),
+        detectionUnitTests: [
+          createMockDetectionUnitTest({ isCompliant: true, code: 'positive code' }),
+        ],
+        examples: [],
+      });
+      
+      const rule = convertor.convertPracticeToRule(practice);
+      
+      expect(rule.detectionProgram).toBeDefined();
+      expect(rule.detectionProgram!.mode).toBe('RAW');
+    });
+
+    it('should skip detection program when sourceCodeState is missing', () => {
+      const toolings = createMockToolings({ status: 'SUCCESS' });
+      // @ts-expect-error - Testing invalid state
+      delete toolings.sourceCodeState;
+      
+      const practice = createMockPractice({
+        suggestionsDisabled: false,
+        toolings,
+        detectionUnitTests: [
+          createMockDetectionUnitTest({ isCompliant: true, code: 'positive code' }),
+        ],
+        examples: [],
+      });
+      
+      const rule = convertor.convertPracticeToRule(practice);
+      
+      expect(rule.detectionProgram).toBeUndefined();
+    });
+
+    it('should skip detection program when sourceCodeState is invalid', () => {
+      const practice = createMockPractice({
+        suggestionsDisabled: false,
+        // @ts-expect-error - Testing invalid state
+        toolings: createMockToolings({ status: 'SUCCESS', sourceCodeState: 'INVALID' }),
+        detectionUnitTests: [
+          createMockDetectionUnitTest({ isCompliant: true, code: 'positive code' }),
+        ],
+        examples: [],
+      });
+      
+      const rule = convertor.convertPracticeToRule(practice);
+      
+      expect(rule.detectionProgram).toBeUndefined();
+    });
   });
 
   describe('buildStandardDescription', () => {

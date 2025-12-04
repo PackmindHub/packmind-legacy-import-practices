@@ -217,6 +217,7 @@ export interface DetectionProgram {
   code: string;
   description: string;
   language: string;
+  mode: 'AST' | 'RAW';
 }
 
 /**

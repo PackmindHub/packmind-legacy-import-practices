@@ -464,21 +464,29 @@ export class PracticeToStandardConvertor {
       negativeExamples,
     };
     
-    // Add detection program if valid
+    // Add detection program if valid and has a valid mode (AST or RAW)
     if (includeDetection && practice.toolings?.program) {
-      const language = this.areAllExamplesAvro(practice)
-        ? ProgrammingLanguage.AVRO
-        : practice.toolings.language;
+      const sourceCodeState = practice.toolings.sourceCodeState;
       
-      if (language === ProgrammingLanguage.GENERIC) {
-        console.warn(`Warning: Tooling language is GENERIC for practice "${practice.name}"`);
+      // Only include detection program if mode is valid (AST or RAW)
+      if (sourceCodeState !== 'AST' && sourceCodeState !== 'RAW') {
+        console.warn(`Warning: Skipping detection program for practice "${practice.name}" - invalid or missing sourceCodeState: "${sourceCodeState}"`);
+      } else {
+        const language = this.areAllExamplesAvro(practice)
+          ? ProgrammingLanguage.AVRO
+          : practice.toolings.language;
+        
+        if (language === ProgrammingLanguage.GENERIC) {
+          console.warn(`Warning: Tooling language is GENERIC for practice "${practice.name}"`);
+        }
+        
+        rule.detectionProgram = {
+          code: practice.toolings.program,
+          description: practice.toolings.programDescription || '',
+          language,
+          mode: sourceCodeState,
+        };
       }
-      
-      rule.detectionProgram = {
-        code: practice.toolings.program,
-        description: practice.toolings.programDescription || '',
-        language,
-      };
     }
     
     return rule;
