@@ -6,6 +6,18 @@ A migration tool to convert coding practices from the legacy Packmind format to 
 
 - [Bun](https://bun.sh/) runtime (recommended) or Node.js 22.17.0+
 
+### Installing Bun
+
+**Linux / macOS:**
+```bash
+curl -fsSL https://bun.sh/install | bash
+```
+
+**Windows:**
+```powershell
+powershell -c "irm bun.sh/install.ps1 | iex"
+```
+
 ## Environment Setup
 
 Create a `.env` file at the root of the project with the following variables:
