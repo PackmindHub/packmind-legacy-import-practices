@@ -2,6 +2,18 @@
 
 A migration tool to convert coding practices from the legacy Packmind format to the new standards-based format in Packmind AI.
 
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Environment Setup](#environment-setup)
+- [LLM Provider Configuration](#llm-provider-configuration)
+- [Migration Workflow](#migration-workflow)
+- [Key Concepts](#key-concepts)
+- [Command Reference](#command-reference)
+- [Development](#development)
+- [Important: Keep Your Files](#important-keep-your-files)
+- [License](#license)
+
 ## Prerequisites
 
 - [Bun](https://bun.sh/) runtime (recommended) or Node.js 22.17.0+
@@ -28,16 +40,68 @@ Create a `.env` file at the root of the project with the following variables:
 # Available from your current Packmind organization at `https://<orga_name>.packmind.app` (or from your self-hosted instance)
 SOURCE_PACKMIND_API_KEY=your_legacy_packmind_api_key
 
-# Required for --map command (LLM-based categorization)
-OPENAI_API_KEY=your_openai_api_key
+# Required for --map command - LLM Provider Selection
+# Choose between "OPENAI" or "AZURE_OPENAI"
+LLM_PROVIDER=OPENAI
 
-# Optional: OpenAI model to use (default: gpt-5.1)
-OPENAI_MODEL=gpt-5.1
+# OpenAI Configuration (when LLM_PROVIDER=OPENAI)
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_MODEL=gpt-5.1  # Optional, default: gpt-5.1
+
+# Azure OpenAI Configuration (when LLM_PROVIDER=AZURE_OPENAI)
+AZURE_OPENAI_API_KEY=your_azure_openai_api_key
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
+AZURE_OPENAI_DEPLOYMENT=your_deployment_name
+AZURE_OPENAI_API_VERSION=2024-12-01-preview  # Optional
 
 # Required for --import command
 # Your API key from the new Packmind instance (https://app.packmind.ai if on Cloud, or your custom self-hosted instance)
 PACKMIND_V3_API_KEY=your_packmind_v3_api_key
 ```
+
+## LLM Provider Configuration
+
+The `--map` command uses an LLM to categorize practices into standards. You can choose between **OpenAI** or **Azure OpenAI** as your provider.
+
+### Selecting a Provider
+
+Set the `LLM_PROVIDER` environment variable to one of:
+- `OPENAI` - Use OpenAI's API directly
+- `AZURE_OPENAI` - Use Azure OpenAI Service
+
+### OpenAI Configuration
+
+When using `LLM_PROVIDER=OPENAI`, configure the following:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | Yes | Your OpenAI API key |
+| `OPENAI_MODEL` | No | Model to use (default: `gpt-5.1`) |
+
+### Azure OpenAI Configuration
+
+When using `LLM_PROVIDER=AZURE_OPENAI`, configure the following:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `AZURE_OPENAI_API_KEY` | Yes | Your Azure OpenAI API key |
+| `AZURE_OPENAI_ENDPOINT` | Yes | Azure resource endpoint URL (e.g., `https://my-resource.openai.azure.com`) |
+| `AZURE_OPENAI_DEPLOYMENT` | Yes | Your deployment name |
+| `AZURE_OPENAI_API_VERSION` | No | API version (default: `2024-12-01-preview`) |
+
+### Environment Variables Summary
+
+| Variable | Required | Provider | Description |
+|----------|----------|----------|-------------|
+| `SOURCE_PACKMIND_API_KEY` | Yes (for --map, --get-spaces) | - | Legacy Packmind API key |
+| `LLM_PROVIDER` | Yes (for --map) | - | Must be `OPENAI` or `AZURE_OPENAI` |
+| `OPENAI_API_KEY` | Yes | OpenAI | Your OpenAI API key |
+| `OPENAI_MODEL` | No | OpenAI | Model to use (default: `gpt-5.1`) |
+| `AZURE_OPENAI_API_KEY` | Yes | Azure | Your Azure OpenAI API key |
+| `AZURE_OPENAI_ENDPOINT` | Yes | Azure | Azure resource endpoint URL |
+| `AZURE_OPENAI_DEPLOYMENT` | Yes | Azure | Deployment name |
+| `AZURE_OPENAI_API_VERSION` | No | Azure | API version (default: `2024-12-01-preview`) |
+| `PACKMIND_V3_API_KEY` | Yes (for --import) | - | New Packmind API key |
 
 ## Migration Workflow
 
@@ -162,4 +226,3 @@ These files serve as a backup and audit trail of your migration. They can be use
 ## License
 
 ISC
-
