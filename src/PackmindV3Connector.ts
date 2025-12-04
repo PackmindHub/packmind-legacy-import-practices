@@ -102,6 +102,10 @@ export class PackmindV3Connector {
     // Build the URL for the import-legacy endpoint
     const url = `${host}/api/v0/import-legacy`;
 
+    // Log request details for debugging
+    console.log(`  → POST ${url}`);
+    console.log(`  → Payload: ${data.standards.length} standard(s), ${data.standards.reduce((acc, s) => acc + (s.rules?.length || 0), 0)} rule(s)`);
+
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -112,15 +116,22 @@ export class PackmindV3Connector {
         body: JSON.stringify(data),
       });
 
+      console.log(`  → Response: ${response.status} ${response.statusText}`);
+
       if (!response.ok) {
         let errorMsg = `API request failed: ${response.status} ${response.statusText}`;
+        let responseBody: string | undefined;
         try {
-          const errorBody = await response.json();
+          responseBody = await response.text();
+          const errorBody = JSON.parse(responseBody);
           if (errorBody && typeof errorBody === 'object' && 'message' in errorBody) {
             errorMsg = `${errorBody.message}`;
           }
         } catch {
-          // ignore if body is not json
+          // If not JSON, include raw body in error for debugging
+          if (responseBody) {
+            errorMsg = responseBody;
+          }
         }
         const error: Error & { statusCode?: number } = new Error(errorMsg);
         error.statusCode = response.status;

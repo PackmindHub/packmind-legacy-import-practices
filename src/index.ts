@@ -1174,21 +1174,162 @@ async function importValidationFiles(
 }
 
 /**
+ * Generates .standards-validation.json files from .standards-mapping.yaml files
+ * For each mapping file:
+ * 1. Extracts slug from filename
+ * 2. Loads practices from corresponding .jsonl file(s)
+ * 3. Uses PracticeToStandardConvertor to convert practices to validation format
+ * 4. Writes {slug}.standards-validation.json
+ */
+function generateValidationFiles(): void {
+  const resDir = getResDir();
+  const spacesPath = join(resDir, 'spaces.json');
+  
+  // Validate spaces.json exists
+  if (!existsSync(spacesPath)) {
+    throw new Error(`Spaces file not found: ${spacesPath}\nUse --get-spaces to fetch spaces from Packmind API first.`);
+  }
+  
+  // Load spaces mapping and build reverse lookup (slug -> spaceId)
+  const spacesMapping = loadSpacesMapping(spacesPath);
+  const slugToSpaceId = buildSlugToSpaceIdMap(spacesMapping);
+  
+  // Discover all .jsonl files and load all practices
+  const jsonlFiles = discoverJsonlFiles(resDir);
+  
+  if (jsonlFiles.length === 0) {
+    throw new Error(`No .jsonl files found in: ${resDir}\nPlace your practices .jsonl files in the res/ folder.`);
+  }
+  
+  console.log('='.repeat(60));
+  console.log('Generating Validation JSON Files');
+  console.log('='.repeat(60));
+  console.log(`Found ${jsonlFiles.length} .jsonl file(s)`);
+  
+  // Load all practices from all .jsonl files
+  const allPractices: ParsedPractice[] = [];
+  for (const jsonlPath of jsonlFiles) {
+    const practices = loadPracticesFromFile(jsonlPath);
+    allPractices.push(...practices);
+    console.log(`  Loaded ${practices.length} practice(s) from ${basename(jsonlPath)}`);
+  }
+  console.log(`Total practices loaded: ${allPractices.length}`);
+  console.log('');
+  
+  // Discover all .standards-mapping.yaml files
+  const mappingFiles = discoverStandardsMappingFiles(resDir);
+  
+  if (mappingFiles.length === 0) {
+    throw new Error(`No .standards-mapping.yaml files found in: ${resDir}\nUse --map to generate standards mapping using LLM first.`);
+  }
+  
+  console.log(`Found ${mappingFiles.length} standards mapping file(s)`);
+  console.log('');
+  
+  let processedCount = 0;
+  
+  for (const mappingPath of mappingFiles) {
+    const fileName = basename(mappingPath);
+    const slug = extractSlugFromStandardsMappingFilename(fileName);
+    
+    if (!slug) {
+      console.log(`⚠️  Skipping: Could not extract slug from ${fileName}`);
+      continue;
+    }
+    
+    // Get the space ID for this slug
+    const spaceId = slugToSpaceId.get(slug);
+    
+    if (!spaceId) {
+      console.log(`⚠️  Skipping ${slug}: No matching space found in spaces.json`);
+      console.log(`   Available slugs: ${[...slugToSpaceId.keys()].join(', ')}`);
+      continue;
+    }
+    
+    // Filter practices belonging to this space
+    const spacePractices = allPractices.filter(p => p.space === spaceId);
+    
+    if (spacePractices.length === 0) {
+      console.log(`⚠️  Skipping ${slug}: No practices found for space ID ${spaceId}`);
+      continue;
+    }
+    
+    const outputPath = join(resDir, `${slug}.standards-validation.json`);
+    
+    console.log('-'.repeat(60));
+    console.log(`Processing: ${slug}`);
+    console.log('-'.repeat(60));
+    console.log(`  Mapping: ${fileName}`);
+    console.log(`  Space ID: ${spaceId}`);
+    console.log(`  Practices found: ${spacePractices.length}`);
+    
+    // Create convertor and run conversion
+    const convertor = new PracticeToStandardConvertor({
+      spacesJsonPath: spacesPath,
+      standardsMappingPath: mappingPath,
+      contextLines: 2,
+    });
+    
+    console.log('  Converting practices to standards...');
+    const output = convertor.convert(spacePractices);
+    
+    // Write output
+    writeFileSync(outputPath, JSON.stringify(output, null, 2), 'utf-8');
+    
+    // Calculate stats for this space
+    let totalRules = 0;
+    let totalPositiveExamples = 0;
+    let totalNegativeExamples = 0;
+    let rulesWithDetection = 0;
+    
+    for (const standard of output.standards) {
+      totalRules += standard.rules.length;
+      for (const rule of standard.rules) {
+        totalPositiveExamples += rule.positiveExamples.length;
+        totalNegativeExamples += rule.negativeExamples.length;
+        if (rule.detectionProgram) {
+          rulesWithDetection++;
+        }
+      }
+    }
+    
+    console.log(`  Standards: ${output.standards.length}`);
+    console.log(`  Rules: ${totalRules}`);
+    console.log(`  Rules with detection: ${rulesWithDetection}`);
+    console.log(`  Positive examples: ${totalPositiveExamples}`);
+    console.log(`  Negative examples: ${totalNegativeExamples}`);
+    console.log(`  → Output: ${basename(outputPath)}`);
+    console.log('');
+    
+    processedCount++;
+  }
+  
+  console.log('='.repeat(60));
+  console.log(`Validation generation complete! Processed ${processedCount} file(s).`);
+  console.log('='.repeat(60));
+  console.log('');
+}
+
+/**
  * Runs the import command with interactive file selection
- * 1. Discovers existing .standards-validation.json files in res/
- * 2. Prompts user to select which files to import
- * 3. Imports selected files to Packmind V3
+ * 1. Generates .standards-validation.json files from mapping files
+ * 2. Discovers existing .standards-validation.json files in res/
+ * 3. Prompts user to select which files to import
+ * 4. Imports selected files to Packmind V3
  * @param importOne - If true, only import the first standard from each file
  * @throws Error if no validation files found or import fails
  */
 async function runImportCommand(importOne: boolean = false): Promise<void> {
   const resDir = getResDir();
 
-  // Discover all .standards-validation.json files
+  // Step 1: Generate validation files from mapping files
+  generateValidationFiles();
+
+  // Step 2: Discover all .standards-validation.json files
   const validationFiles = discoverValidationFiles(resDir);
 
   if (validationFiles.length === 0) {
-    throw new Error(`No .standards-validation.json files found in: ${resDir}\nUse --map to generate standards mapping and then generate validation files first.`);
+    throw new Error(`No .standards-validation.json files found in: ${resDir}\nMake sure you have .jsonl files and .standards-mapping.yaml files in the res/ folder.`);
   }
 
   // Get stats for each file
