@@ -505,6 +505,109 @@ describe('PracticeToStandardConvertor', () => {
       expect(description).toContain('   Line 2');
       expect(description).toContain('   Line 3');
     });
+
+    it('should convert ## What to ### What', () => {
+      const practices = [
+        createMockPractice({
+          name: 'Rule A',
+          description: '## What\nSome explanation',
+        }),
+      ];
+      
+      const rules = practices.map(p => convertor.convertPracticeToRule(p));
+      
+      const description = convertor.buildStandardDescription(rules, practices);
+      
+      expect(description).toContain('   ### What');
+      expect(description).not.toContain('   ## What');
+    });
+
+    it('should convert ## Why to ### Why', () => {
+      const practices = [
+        createMockPractice({
+          name: 'Rule A',
+          description: '## Why\nSome reason',
+        }),
+      ];
+      
+      const rules = practices.map(p => convertor.convertPracticeToRule(p));
+      
+      const description = convertor.buildStandardDescription(rules, practices);
+      
+      expect(description).toContain('   ### Why');
+      expect(description).not.toContain('   ## Why');
+    });
+
+    it('should convert ## Fix to ### Fix', () => {
+      const practices = [
+        createMockPractice({
+          name: 'Rule A',
+          description: '## Fix\nSome fix instructions',
+        }),
+      ];
+      
+      const rules = practices.map(p => convertor.convertPracticeToRule(p));
+      
+      const description = convertor.buildStandardDescription(rules, practices);
+      
+      expect(description).toContain('   ### Fix');
+      expect(description).not.toContain('   ## Fix');
+    });
+
+    it('should convert all What/Why/Fix headers in a single description', () => {
+      const practices = [
+        createMockPractice({
+          name: 'Rule A',
+          description: '## What\nExplanation\n\n## Why\nReason\n\n## Fix\nInstructions',
+        }),
+      ];
+      
+      const rules = practices.map(p => convertor.convertPracticeToRule(p));
+      
+      const description = convertor.buildStandardDescription(rules, practices);
+      
+      expect(description).toContain('   ### What');
+      expect(description).toContain('   ### Why');
+      expect(description).toContain('   ### Fix');
+      expect(description).not.toContain('   ## What');
+      expect(description).not.toContain('   ## Why');
+      expect(description).not.toContain('   ## Fix');
+    });
+
+    it('should NOT convert lines already starting with ### What/Why/Fix', () => {
+      const practices = [
+        createMockPractice({
+          name: 'Rule A',
+          description: '### What\nAlready level 3\n\n### Why\nAlready level 3',
+        }),
+      ];
+      
+      const rules = practices.map(p => convertor.convertPracticeToRule(p));
+      
+      const description = convertor.buildStandardDescription(rules, practices);
+      
+      // Should still have ### (not ####)
+      expect(description).toContain('   ### What');
+      expect(description).toContain('   ### Why');
+      expect(description).not.toContain('   #### What');
+      expect(description).not.toContain('   #### Why');
+    });
+
+    it('should NOT convert ## headers that are not What/Why/Fix', () => {
+      const practices = [
+        createMockPractice({
+          name: 'Rule A',
+          description: '## Whatever\nSome text\n\n## Other\nMore text',
+        }),
+      ];
+      
+      const rules = practices.map(p => convertor.convertPracticeToRule(p));
+      
+      const description = convertor.buildStandardDescription(rules, practices);
+      
+      expect(description).toContain('   ## Whatever');
+      expect(description).toContain('   ## Other');
+    });
   });
 });
 

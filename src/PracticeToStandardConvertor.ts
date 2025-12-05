@@ -513,8 +513,14 @@ export class PracticeToStandardConvertor {
       const practice = practiceMap.get(rule.name);
       const description = practice?.description || '';
       
+      // Convert level-2 headers to level-3 for What/Why/Fix sections
+      const transformedDescription = description
+        .replace(/^## What\b/gm, '### What')
+        .replace(/^## Why\b/gm, '### Why')
+        .replace(/^## Fix\b/gm, '### Fix');
+      
       // Indent each line of the description
-      const indentedDescription = description
+      const indentedDescription = transformedDescription
         .split('\n')
         .map(line => `   ${line}`)
         .join('\n');
