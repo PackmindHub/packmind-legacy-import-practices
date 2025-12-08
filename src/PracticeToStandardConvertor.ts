@@ -404,8 +404,8 @@ export class PracticeToStandardConvertor {
     
     // Add description as comment only if it has actual content
     const code = hasDescription
-      ? addDescriptionAsCommentForLanguage(test.code, trimmedDescription, programmingLanguage)
-      : test.code;
+      ? addDescriptionAsCommentForLanguage(test.code.trim(), trimmedDescription, programmingLanguage)
+      : test.code.trim();
     
     return {
       code,
@@ -418,7 +418,7 @@ export class PracticeToStandardConvertor {
    */
   convertFileWorkshopExample(example: Example): ValidatedExample {
     return {
-      code: this.extractCodeWithContext(example),
+      code: this.extractCodeWithContext(example).trim(),
       language: convertProgrammingLanguage(example.fileWorkshop?.lang || ''),
     };
   }
