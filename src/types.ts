@@ -135,6 +135,38 @@ export interface Toolings {
 }
 
 /**
+ * Represents a regex pattern for similarity-based detection
+ */
+export interface SimilarityRegex {
+  extensions: string[];
+  isPositive: boolean;
+  _id: string;
+  regex: string;
+  order: number;
+}
+
+/**
+ * Represents a semgrep pattern for similarity-based detection
+ */
+export interface SimilaritySemgrep {
+  extensions: string[];
+  isPositive: boolean;
+  languages: string[];
+  _id: string;
+  order: number;
+  pattern: string;
+}
+
+/**
+ * Represents similarity features for pattern-based detection (regex and semgrep)
+ */
+export interface SimilarityFeatures {
+  _id?: string;
+  regex?: SimilarityRegex[];
+  semgrep?: SimilaritySemgrep[];
+}
+
+/**
  * Represents the parsed practice object with the required properties
  * Note: guidelines and toolings are optional and may not be present in all practice objects
  */
@@ -147,6 +179,7 @@ export interface ParsedPractice {
   examples: Example[];
   guidelines?: Guidelines;
   toolings?: Toolings;
+  similarityFeatures?: SimilarityFeatures;
   space: string; // ObjectId reference to the space
 }
 

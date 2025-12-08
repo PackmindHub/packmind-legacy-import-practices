@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join, resolve, basename } from 'path';
 import { createInterface } from 'readline';
-import type { ParsedPractice, DetectionUnitTest, Example, Guidelines, Toolings } from './types.js';
+import type { ParsedPractice, DetectionUnitTest, Example, Guidelines, Toolings, SimilarityFeatures } from './types.js';
 import { displayPracticeStats, displayPracticeList, displayCategoryStats } from './OutputAnalysis.js';
 import { YamlExporter } from './YamlExporter.js';
 import { YamlMinifier } from './YamlMinifier.js';
@@ -381,7 +381,7 @@ function buildSlugToSpaceIdMap(spacesMapping: Map<string, string>): Map<string, 
 // ============================================================================
 
 interface CliArgs {
-  command: 'init' | 'stats' | 'map' | 'get-spaces' | 'import';
+  command: 'init' | 'stats' | 'map' | 'get-spaces' | 'import' | 'analyze';
   inputFile?: string;
   outputFile?: string;
   importOne?: boolean;
@@ -402,6 +402,7 @@ Commands:
   --stats                              Display practice statistics (default)
   --import                             Import .standards-validation.json files to Packmind V3
   --import --one                       Import only the first standard from each file
+  --analyze                            Analyze detection capabilities of practices in .jsonl files
   --help                               Show this help message
 
 Workflow:
@@ -443,6 +444,7 @@ Examples:
   npx packmind-legacy-import --stats
   npx packmind-legacy-import --import                 # Interactive import of validation files
   npx packmind-legacy-import --import --one           # Import first standard only per file
+  npx packmind-legacy-import --analyze                # Analyze detection capabilities
 `);
 }
 
@@ -493,6 +495,10 @@ function parseArgs(args: string[]): CliArgs {
       command: 'import',
       importOne,
     };
+  }
+
+  if (relevantArgs.includes('--analyze')) {
+    return { command: 'analyze' };
   }
 
   // Default command is stats
@@ -571,6 +577,9 @@ export function parsePractice(jsonString: string): ParsedPractice {
         throw new Error(`Practice "${parsed.name}" has invalid toolings.language: "${parsed.toolings.language}". Must be a valid ProgrammingLanguage.`);
       }
       result.toolings = parsed.toolings as Toolings;
+    }
+    if (parsed.similarityFeatures) {
+      result.similarityFeatures = parsed.similarityFeatures as SimilarityFeatures;
     }
     
     return result;
@@ -1362,6 +1371,274 @@ async function runImportCommand(importOne: boolean = false): Promise<void> {
 }
 
 // ============================================================================
+// Analyze Command
+// ============================================================================
+
+/**
+ * Detection category for a practice
+ */
+type DetectionCategory = 
+  | 'detection_success'
+  | 'both_regex_semgrep'
+  | 'regex_only'
+  | 'semgrep_only'
+  | 'none';
+
+/**
+ * Statistics for a single space
+ */
+interface SpaceAnalysisStats {
+  spaceName: string;
+  spaceId: string;
+  totalPractices: number;
+  detectionSuccess: number;
+  bothRegexSemgrep: number;
+  regexOnly: number;
+  semgrepOnly: number;
+  none: number;
+  // Practice names by category (for detailed listing)
+  practicesBothRegexSemgrep: string[];
+  practicesRegexOnly: string[];
+  practicesSemgrepOnly: string[];
+}
+
+/**
+ * Checks if a practice has a successful detection program
+ */
+function hasDetectionSuccess(practice: ParsedPractice): boolean {
+  if (practice.suggestionsDisabled) {
+    return false;
+  }
+  if (!practice.toolings) {
+    return false;
+  }
+  return practice.toolings.status === 'SUCCESS' && Boolean(practice.toolings.program);
+}
+
+/**
+ * Checks if a practice has active regex patterns
+ */
+function hasActiveRegex(practice: ParsedPractice): boolean {
+  return (practice.similarityFeatures?.regex?.length ?? 0) > 0;
+}
+
+/**
+ * Checks if a practice has active semgrep patterns
+ */
+function hasActiveSemgrep(practice: ParsedPractice): boolean {
+  return (practice.similarityFeatures?.semgrep?.length ?? 0) > 0;
+}
+
+/**
+ * Categorizes a practice based on its detection capabilities
+ */
+function categorizePractice(practice: ParsedPractice): DetectionCategory {
+  // Check detection program first (highest priority)
+  if (hasDetectionSuccess(practice)) {
+    return 'detection_success';
+  }
+  
+  const hasRegex = hasActiveRegex(practice);
+  const hasSemgrep = hasActiveSemgrep(practice);
+  
+  if (hasRegex && hasSemgrep) {
+    return 'both_regex_semgrep';
+  }
+  
+  if (hasRegex) {
+    return 'regex_only';
+  }
+  
+  if (hasSemgrep) {
+    return 'semgrep_only';
+  }
+  
+  return 'none';
+}
+
+/**
+ * Formats a percentage with padding for alignment
+ */
+function formatPercentage(count: number, total: number): string {
+  if (total === 0) return '  0.0%';
+  const percentage = (count / total) * 100;
+  const formatted = percentage.toFixed(1);
+  return formatted.padStart(5) + '%';
+}
+
+/**
+ * Formats a count with padding for alignment
+ */
+function formatCount(count: number, maxDigits: number): string {
+  return count.toString().padStart(maxDigits);
+}
+
+/**
+ * Displays a list of practice names with a label
+ */
+function displayPracticeNamesList(label: string, practices: string[]): void {
+  if (practices.length === 0) return;
+  
+  console.log(`  ${label}:`);
+  // Sort alphabetically and display
+  const sorted = [...practices].sort((a, b) => a.localeCompare(b));
+  for (const name of sorted) {
+    console.log(`    - ${name}`);
+  }
+  console.log('');
+}
+
+/**
+ * Displays analysis results for a single space
+ */
+function displaySpaceAnalysis(stats: SpaceAnalysisStats): void {
+  const total = stats.totalPractices;
+  const maxDigits = total.toString().length;
+  
+  console.log(`Space: ${stats.spaceName} (${total} practices)`);
+  console.log('-'.repeat(60));
+  console.log(`  Detection program (success):     ${formatCount(stats.detectionSuccess, maxDigits)} (${formatPercentage(stats.detectionSuccess, total)})`);
+  console.log(`  Both regex + semgrep:            ${formatCount(stats.bothRegexSemgrep, maxDigits)} (${formatPercentage(stats.bothRegexSemgrep, total)})`);
+  console.log(`  Regex only (no detection):       ${formatCount(stats.regexOnly, maxDigits)} (${formatPercentage(stats.regexOnly, total)})`);
+  console.log(`  Semgrep only (no detection):     ${formatCount(stats.semgrepOnly, maxDigits)} (${formatPercentage(stats.semgrepOnly, total)})`);
+  console.log(`  No detection configured:         ${formatCount(stats.none, maxDigits)} (${formatPercentage(stats.none, total)})`);
+  console.log('');
+  
+  // Display practice names for regex/semgrep categories
+  displayPracticeNamesList('Both regex + semgrep', stats.practicesBothRegexSemgrep);
+  displayPracticeNamesList('Regex only', stats.practicesRegexOnly);
+  displayPracticeNamesList('Semgrep only', stats.practicesSemgrepOnly);
+}
+
+/**
+ * Runs the analyze command to display detection capabilities of practices
+ */
+function runAnalyzeCommand(): void {
+  const resDir = getResDir();
+  
+  // Discover all .jsonl files in res/ (flat, not recursive)
+  const jsonlFiles = discoverJsonlFiles(resDir);
+  
+  if (jsonlFiles.length === 0) {
+    throw new Error('No .jsonl files found in res/ directory. Place your .jsonl files in the res/ folder and try again.');
+  }
+  
+  console.log('');
+  console.log('='.repeat(60));
+  console.log('Analysis: Practice Detection Capabilities');
+  console.log('='.repeat(60));
+  console.log('');
+  console.log(`Scanning ${jsonlFiles.length} .jsonl file(s) in res/`);
+  console.log('');
+  
+  // Load all practices from all .jsonl files
+  const allPractices: ParsedPractice[] = [];
+  for (const jsonlPath of jsonlFiles) {
+    const practices = loadPracticesFromFile(jsonlPath);
+    allPractices.push(...practices);
+  }
+  
+  if (allPractices.length === 0) {
+    console.log('No practices found in .jsonl files.');
+    return;
+  }
+  
+  // Group practices by space ID
+  const practicesBySpace = new Map<string, ParsedPractice[]>();
+  for (const practice of allPractices) {
+    const spaceId = practice.space;
+    if (!practicesBySpace.has(spaceId)) {
+      practicesBySpace.set(spaceId, []);
+    }
+    practicesBySpace.get(spaceId)!.push(practice);
+  }
+  
+  // Try to load spaces.json for friendly names (optional)
+  let spacesMapping = new Map<string, string>();
+  const spacesJsonPath = join(resDir, 'spaces.json');
+  try {
+    spacesMapping = loadSpacesMapping(spacesJsonPath);
+  } catch {
+    // Ignore if spaces.json doesn't exist - we'll use space IDs
+  }
+  
+  // Analyze each space
+  const allStats: SpaceAnalysisStats[] = [];
+  
+  for (const [spaceId, practices] of practicesBySpace) {
+    const spaceName = spacesMapping.get(spaceId) || `Space ${spaceId.slice(0, 8)}...`;
+    
+    const stats: SpaceAnalysisStats = {
+      spaceName,
+      spaceId,
+      totalPractices: practices.length,
+      detectionSuccess: 0,
+      bothRegexSemgrep: 0,
+      regexOnly: 0,
+      semgrepOnly: 0,
+      none: 0,
+      practicesBothRegexSemgrep: [],
+      practicesRegexOnly: [],
+      practicesSemgrepOnly: [],
+    };
+    
+    for (const practice of practices) {
+      const category = categorizePractice(practice);
+      switch (category) {
+        case 'detection_success':
+          stats.detectionSuccess++;
+          break;
+        case 'both_regex_semgrep':
+          stats.bothRegexSemgrep++;
+          stats.practicesBothRegexSemgrep.push(practice.name);
+          break;
+        case 'regex_only':
+          stats.regexOnly++;
+          stats.practicesRegexOnly.push(practice.name);
+          break;
+        case 'semgrep_only':
+          stats.semgrepOnly++;
+          stats.practicesSemgrepOnly.push(practice.name);
+          break;
+        case 'none':
+          stats.none++;
+          break;
+      }
+    }
+    
+    allStats.push(stats);
+  }
+  
+  // Sort spaces by name for consistent output
+  allStats.sort((a, b) => a.spaceName.localeCompare(b.spaceName));
+  
+  // Display results for each space
+  for (const stats of allStats) {
+    displaySpaceAnalysis(stats);
+  }
+  
+  // Calculate and display totals
+  const totalPractices = allStats.reduce((sum, s) => sum + s.totalPractices, 0);
+  const totalDetectionSuccess = allStats.reduce((sum, s) => sum + s.detectionSuccess, 0);
+  const totalBothRegexSemgrep = allStats.reduce((sum, s) => sum + s.bothRegexSemgrep, 0);
+  const totalRegexOnly = allStats.reduce((sum, s) => sum + s.regexOnly, 0);
+  const totalSemgrepOnly = allStats.reduce((sum, s) => sum + s.semgrepOnly, 0);
+  const totalNone = allStats.reduce((sum, s) => sum + s.none, 0);
+  
+  console.log('='.repeat(60));
+  console.log(`Total: ${allStats.length} space(s), ${totalPractices} practices analyzed`);
+  console.log('='.repeat(60));
+  
+  const maxDigits = totalPractices.toString().length;
+  console.log(`  Detection program (success):     ${formatCount(totalDetectionSuccess, maxDigits)} (${formatPercentage(totalDetectionSuccess, totalPractices)})`);
+  console.log(`  Both regex + semgrep:            ${formatCount(totalBothRegexSemgrep, maxDigits)} (${formatPercentage(totalBothRegexSemgrep, totalPractices)})`);
+  console.log(`  Regex only (no detection):       ${formatCount(totalRegexOnly, maxDigits)} (${formatPercentage(totalRegexOnly, totalPractices)})`);
+  console.log(`  Semgrep only (no detection):     ${formatCount(totalSemgrepOnly, maxDigits)} (${formatPercentage(totalSemgrepOnly, totalPractices)})`);
+  console.log(`  No detection configured:         ${formatCount(totalNone, maxDigits)} (${formatPercentage(totalNone, totalPractices)})`);
+  console.log('='.repeat(60));
+}
+
+// ============================================================================
 // Main Entry Point
 // ============================================================================
 
@@ -1387,6 +1664,9 @@ async function main(): Promise<void> {
         break;
       case 'import':
         await runImportCommand(args.importOne || false);
+        break;
+      case 'analyze':
+        runAnalyzeCommand();
         break;
     }
     

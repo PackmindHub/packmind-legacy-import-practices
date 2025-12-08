@@ -472,9 +472,14 @@ export class PracticeToStandardConvertor {
       if (sourceCodeState !== 'AST' && sourceCodeState !== 'RAW') {
         console.warn(`Warning: Skipping detection program for practice "${practice.name}" - invalid or missing sourceCodeState: "${sourceCodeState}"`);
       } else {
-        const language = this.areAllExamplesAvro(practice)
+        let language = this.areAllExamplesAvro(practice)
           ? ProgrammingLanguage.AVRO
           : practice.toolings.language;
+        
+        // Normalize TYPESCRIPT_JSX to TYPESCRIPT_TSX
+        if (language === 'TYPESCRIPT_JSX') {
+          language = ProgrammingLanguage.TYPESCRIPT_TSX;
+        }
         
         if (language === ProgrammingLanguage.GENERIC) {
           console.warn(`Warning: Tooling language is GENERIC for practice "${practice.name}"`);
