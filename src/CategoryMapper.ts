@@ -42,10 +42,55 @@ export function countPracticesInYaml(yamlContent: string): number {
 
 /**
  * Calculates the maximum number of categories based on practice count
- * Target: ~5 practices per standard (minimum), with bounds [2, 10]
+ * Uses piecewise linear interpolation between milestones:
+ * - 100 practices → 10 standards
+ * - 200 practices → 15 standards
+ * - 300 practices → 23 standards
+ * - 400 practices → 30 standards
+ * Extrapolates beyond the range using the nearest segment's slope
  */
 export function calculateMaxCategories(practiceCount: number): number {
-  return Math.max(2, Math.min(10, Math.ceil(practiceCount / 5)));
+  // Define milestone points: [practiceCount, maxStandards]
+  const milestones: Array<[number, number]> = [
+    [100, 10],
+    [200, 15],
+    [300, 23],
+    [400, 30],
+  ];
+
+  // If below first milestone, extrapolate using first segment's slope
+  if (practiceCount < milestones[0]![0]) {
+    const [x1, y1] = milestones[0]!;
+    const [x2, y2] = milestones[1]!;
+    const slope = (y2 - y1) / (x2 - x1);
+    const result = y1 + slope * (practiceCount - x1);
+    return Math.max(2, Math.ceil(result));
+  }
+
+  // If above last milestone, extrapolate using last segment's slope
+  if (practiceCount > milestones[milestones.length - 1]![0]) {
+    const lastIndex = milestones.length - 1;
+    const [x1, y1] = milestones[lastIndex - 1]!;
+    const [x2, y2] = milestones[lastIndex]!;
+    const slope = (y2 - y1) / (x2 - x1);
+    const result = y2 + slope * (practiceCount - x2);
+    return Math.max(2, Math.ceil(result));
+  }
+
+  // Find the two milestones that bracket the practice count
+  for (let i = 0; i < milestones.length - 1; i++) {
+    const [x1, y1] = milestones[i]!;
+    const [x2, y2] = milestones[i + 1]!;
+
+    if (practiceCount >= x1 && practiceCount <= x2) {
+      // Linear interpolation: y = y1 + (y2 - y1) * (x - x1) / (x2 - x1)
+      const result = y1 + ((y2 - y1) * (practiceCount - x1)) / (x2 - x1);
+      return Math.max(2, Math.ceil(result));
+    }
+  }
+
+  // Fallback (should never reach here, but ensure minimum of 2)
+  return Math.max(2, Math.ceil(practiceCount / 5));
 }
 
 /**
