@@ -28,7 +28,12 @@ export class OpenAIService implements LLMServicePrompt {
       throw new Error('OPENAI_API_KEY environment variable is not set. Please create a .env file with your API key.');
     }
 
-    this.client = new OpenAI({ apiKey });
+    const baseURL = process.env['OPENAI_URL'];
+    
+    this.client = new OpenAI({
+      apiKey,
+      ...(baseURL && { baseURL }), // Only include baseURL if defined and non-empty
+    });
     this.model = process.env['OPENAI_MODEL'] || 'gpt-5.1';
   }
 
@@ -150,6 +155,66 @@ export class AzureOpenAIService implements LLMServicePrompt {
    */
   getModel(): string {
     return this.deployment;
+  }
+}
+
+/**
+ * Validates LLM configuration without instantiating the service.
+ * Checks that all required environment variables are set for the configured provider.
+ * 
+ * @throws Error if LLM_PROVIDER is not set, has an invalid value, or required environment variables are missing
+ * 
+ * @example
+ * ```typescript
+ * // Validate before running pipeline
+ * validateLLMConfiguration();
+ * // If validation passes, proceed with pipeline
+ * ```
+ */
+export function validateLLMConfiguration(): void {
+  const provider = process.env['LLM_PROVIDER'];
+
+  if (!provider) {
+    throw new Error(
+      'LLM_PROVIDER environment variable is not set. Please set it to "OPENAI" or "AZURE_OPENAI".'
+    );
+  }
+
+  if (provider !== 'OPENAI' && provider !== 'AZURE_OPENAI') {
+    throw new Error(
+      `Invalid LLM_PROVIDER: "${provider}". Must be "OPENAI" or "AZURE_OPENAI".`
+    );
+  }
+
+  if (provider === 'OPENAI') {
+    const apiKey = process.env['OPENAI_API_KEY'];
+    if (!apiKey) {
+      throw new Error(
+        'OPENAI_API_KEY environment variable is not set. Please create a .env file with your API key.'
+      );
+    }
+  }
+
+  if (provider === 'AZURE_OPENAI') {
+    const apiKey = process.env['AZURE_OPENAI_API_KEY'];
+    const endpoint = process.env['AZURE_OPENAI_ENDPOINT'];
+    const deployment = process.env['AZURE_OPENAI_DEPLOYMENT'];
+
+    if (!apiKey) {
+      throw new Error(
+        'AZURE_OPENAI_API_KEY environment variable is not set. Please create a .env file with your API key.'
+      );
+    }
+    if (!endpoint) {
+      throw new Error(
+        'AZURE_OPENAI_ENDPOINT environment variable is not set. Please set it to your Azure OpenAI resource endpoint (e.g., https://my-resource.openai.azure.com).'
+      );
+    }
+    if (!deployment) {
+      throw new Error(
+        'AZURE_OPENAI_DEPLOYMENT environment variable is not set. Please set it to your Azure OpenAI deployment name.'
+      );
+    }
   }
 }
 

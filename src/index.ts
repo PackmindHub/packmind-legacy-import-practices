@@ -11,6 +11,7 @@ import { PackmindAPI } from './PackmindAPI.js';
 import { PracticeToStandardConvertor } from './PracticeToStandardConvertor.js';
 import { stringToProgrammingLanguage } from './ProgrammingLanguage.js';
 import { PackmindV3Connector } from './PackmindV3Connector.js';
+import { validateLLMConfiguration } from './LLMService.js';
 import type { ValidationOutput } from './types.js';
 
 // Bun automatically loads .env files
@@ -986,6 +987,9 @@ function displayImportSummary(results: ImportFileResult[]): void {
  * 3. Generate standards mapping using LLM
  */
 async function runMapCommand(): Promise<void> {
+  // Validate LLM configuration early to fail fast with clear error messages
+  validateLLMConfiguration();
+  
   console.log('');
   console.log('='.repeat(60));
   console.log('Full Pipeline: get-spaces → init → map');
