@@ -2,8 +2,39 @@
 
 A migration tool to convert coding practices from the legacy Packmind format to the new standards-based format in Packmind AI.
 
+## TL;DR
+
+**What it is:** Tool to migrate coding practices from legacy Packmind to the new Packmind AI.
+
+**Prerequisites:**
+- Deploy a new Packmind instance first (new application, not an upgrade)
+- Requires PostgreSQL 17, Redis, and persistent storage
+- Authentication: login/password only (SSO coming in 2026)
+- Runs locally — no data leaves your infrastructure
+
+**Migration process:**
+1. Export practices from legacy Packmind as `.jsonl` files
+2. Generate mapping files — tool uses an LLM to group practices into standards
+3. Review and edit the generated standards organization
+4. Import standards into the new Packmind instance
+
+**Model changes:**
+- Practices → Rules (grouped into Standards)
+- Spaces → Standards (more granular organization)
+- All standards import into a single space initially (prefixed with old space name for traceability)
+
+**What doesn't migrate:**
+- Regex-based detection
+- Semgrep-based detection
+- AI-generated linting programs migrate only if they were active and detectable
+
+**Setup:** Requires API keys for legacy Packmind, new Packmind, and an LLM provider (OpenAI or Azure OpenAI) for the mapping step.
+
 ## Table of Contents
 
+- [TL;DR](#tldr)
+- [Overview](#overview)
+- [Deploying the New Packmind Instance](#deploying-the-new-packmind-instance)
 - [Prerequisites](#prerequisites)
 - [Environment Setup](#environment-setup)
 - [LLM Provider Configuration](#llm-provider-configuration)
@@ -14,7 +45,43 @@ A migration tool to convert coding practices from the legacy Packmind format to 
 - [Important: Keep Your Files](#important-keep-your-files)
 - [License](#license)
 
-## Prerequisites
+## Overview
+
+This migration involves deploying a **new Packmind application** (not just an upgrade) and migrating your existing practices to the new standards-based format. The new Packmind is a completely separate application with its own Helm chart, database, and infrastructure requirements.
+
+**Important prerequisites:**
+- You must deploy the new Packmind instance **before** running this migration tool
+- This tool runs entirely on your local machine - no data leaves your infrastructure during migration
+- The functional model has evolved: practices become **rules**, which are grouped into **standards** (replacing the old "spaces" concept)
+
+## Deploying the New Packmind Instance
+
+**Important:** This is a **new application**, not a simple upgrade. You need to deploy a completely new Packmind instance before running the migration tool.
+
+### Helm Chart
+
+The new Packmind is deployed via a dedicated Helm chart:
+- **Helm Chart Repository**: [packmind-ai-helm-chart](https://github.com/PackmindHub/packmind-ai-helm-chart)
+- **Version**: Make sure to enable the **"enterprise"** version during deployment (not the open-source version)
+
+### Infrastructure Requirements
+
+The Helm chart provides a standard architecture with the following components:
+
+- **Application Pods**: The main Packmind application
+- **PostgreSQL 17**: Database (included in the Helm chart by default, or you can use your own instance)
+  - Requires a persistent volume for data storage
+- **Redis**: Used for caching and background job orchestration
+
+### Initial State
+
+At first startup, the new Packmind instance will be **empty** - no data will be present until you complete the migration process using this tool.
+
+### Authentication
+
+Currently, only **hardcoded login/password authentication** is supported. SSO (Single Sign-On) will be available in 2026.
+
+## Prerequisites for the migration script
 
 - [Bun](https://bun.sh/) runtime (recommended) or Node.js 22.17.0+
 
@@ -105,6 +172,11 @@ When using `LLM_PROVIDER=AZURE_OPENAI`, configure the following:
 
 ## Migration Workflow
 
+**Prerequisites:**
+- The new Packmind instance must be deployed and running before starting the migration
+- This tool runs entirely on your local machine
+- No data leaves your infrastructure during the migration process
+
 ### Step 1: Retrieve the `.jsonl` files
 
 Export your practices from your current Packmind organization:
@@ -176,13 +248,36 @@ A single **practice** in the legacy format becomes a **rule** within a **standar
 
 The goal of this migration is not just to convert practices to rules, but to **group them into meaningful, focused standards** that are more granular than the original spaces.
 
+### Evolution of the Functional Model
+
+The new Packmind introduces a more granular organizational structure:
+
+- **Practices → Rules**: Each practice becomes a rule within a standard
+- **Spaces → Standards**: Rules are grouped into standards (replacing the old "spaces" concept)
+- **Spaces in New Packmind**: The spaces feature is not yet available in the new version but will be added in the future
+
+This new approach enables finer granularity, allowing you to create focused standards for specific technologies or frameworks (e.g., standards dedicated to a specific ORM, test framework, etc.).
+
+**During Import:**
+- All standards are imported into a **single space** in the new Packmind instance
+- Standards are **prefixed with the name of the old space** to maintain traceability
+- In the future, you'll be able to move standards between spaces once that functionality becomes available
+
 ### Detection Programs
 
+**AI-Generated Linting Programs:**
 Detection programs from legacy practices are preserved **only** when:
 - The practice was configured to be detectable
 - The practice had an active detection program
 
 If these conditions are not met, the detection program is not imported. You can always regenerate detection programs later using Packmind's linter feature.
+
+**Unsupported Detection Methods:**
+The following detection methods are **not supported** in the new Packmind and will **not be migrated**:
+- **Regex-based detection**: Practices using regular expressions for detection are not migrated
+- **Semgrep-based detection**: Practices using Semgrep patterns are not migrated
+
+These practices can be manually regenerated later if needed. Guidance for manual regeneration is available and can be covered in a support session.
 
 ## Command Reference
 
